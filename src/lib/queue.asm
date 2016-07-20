@@ -22,7 +22,7 @@ JUMP_TABLE
 q_init
     ; prologue
     add r6, r6, #-1
-    str r3, r3, #0
+    str r3, r6, #0
     
     and r3, r3, #0  ; get a zero for initial indices
 
@@ -35,7 +35,7 @@ q_init
     str r3, r0, #4  ; store neg for empty flag
 
     ; epilogue
-    ldr r3, r3, #0
+    ldr r3, r6, #0
     add r6, r6, #1
     ret
 

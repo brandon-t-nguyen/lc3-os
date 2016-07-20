@@ -1,4 +1,4 @@
-.orig x0200
+.orig x0600
 
 __JUMP_TABLE__
 .fill   threadInit
@@ -9,6 +9,28 @@ __JUMP_TABLE__
 
 threadInit
     ; function body
+    ; for each thread, set it to TERM
+    lea r0, _thread_array
+    ld  r1, _thread_size
+    ld  r3, _thread_TERM ; get a 0 for TERM
+_threadInit_term_loop
+    str r3, r0, #0  ; store our state
+    add r0, r0, r1  ; point to next thread
+    add r2, r2, #-1 ; decrement the thread counter
+    brp _threadInit_term_loop
+
+    ; setup our current thread stuff
+    lea r0, _thread_array
+    add r6, r0, r1  ; get to the stack of the 0th thread
+    and r2, r2, #0  ; let r2 be state RUNNING
+    add r2, r2, #2
+    str r2, r0, #0  ; store the state
+    st  r0, _p_active_thread
+
+    ; we can now use the stack
+    add r6, r6, #-1
+    str r7, r6, #0
+
     ; initialize the queue
     lea r0, _thread_queue
     lea r1, _thread_buffer
@@ -16,22 +38,9 @@ threadInit
     ldi r3, _jsrr_q_init
     jsrr r3
 
-    ; for each thread, set it to TERM
-    lea r0, _thread_array
-    ld  r1, _thread_size
-    and r3, r3, #0  ; get a 0 for TERM
-_threadInit_term_loop
-    str r3, r0, #0  ; store our state
-    add r0, r0, r1  ; point to next thread
-    add r2, r2, #-1 ; decrement the thread counter
-    brp _threadInit_term_loop
-
-    ; setup our stack pointer
-    lea r0, _thread_array
-    add r6, r0, r1  ; get to the stack of the 0th thread
-    and r2, r2, #0  ; let r2 be state RUNNING
-    add r2, r2, #2
-    str r2, r0, #0  ; store the state
+    ; epilogue
+    ldr r7, r6, #0
+    add r6, r6, #1
 
     ret
     _jsrr_q_init  .fill   x2200
@@ -85,11 +94,7 @@ _threadCreate_found
     str r0, r3, #0  ; state
     str r5, r3, #1  ; sp
     add r0, r3, #0  ; move the thread pointer for enqueue
-    jsr threadEnque ; enqueue the thread
-    and r0, r0, #0  ; clear r0 for returning
-    brz _threadCreate_return ; if failed, don't add 1 and return a 0
-    add r0, r0, #1  ; return 1 for success
-
+    jsr threadEnque ; enqueue the thread, return the status of it
 _threadCreate_return
     ldr r1, r6, #0
     ldr r2, r6, #1
@@ -100,7 +105,44 @@ _threadCreate_return
     add r6, r6, #6
     ret
 
+; Inputs: none
+; Outputs: none
 threadYield
+    ; prologue
+    add r6, r6, #-4
+    str r7, r6, #3
+    str r2, r6, #2
+    str r1, r6, #1
+    str r0, r6, #0
+
+    ; dequeue a thread
+    jsr threadDeque
+    add r0, r0, #0              ; check if pointer is null
+    brz _threadYield_return     ; if null, return
+    ld  r1, _p_active_thread    ; get the active thread
+    
+    ld  r2, _thread_READY
+    str r2, r1, #0              ; activeThreadPtr->state=READY
+
+    add r2, r0, #0      ; move new threadptr to r2
+    add r0, r1, #0      ; move the activeptr to r0
+    jsr threadEnque     ; enqueue the activeptr
+
+    ; r2=new threadptr, r1=old threadptr
+    ld  r0, _thread_RUNNING
+    str r0, r2, #0      ; newthread->state = RUNNING
+
+    add r0, r1, #1      ; get the pointer to the old thread's SP
+    ldr r1, r2, #1      ; get the new thread's SP
+    jsr threadContextSwitch ; threadContextSwitch(&oldthread->sp,newthread->sp)
+
+_threadYield_return
+    ; epilogue
+    ldr r7, r6, #3
+    ldr r2, r6, #2
+    ldr r1, r6, #1
+    ldr r0, r6, #0
+    add r6, r6, #4
     ret
 
 threadId
@@ -159,21 +201,51 @@ threadEnque
 
     ; epilogue
     add r6, r5, #0  ; deallocate with FP
-    str r7, r6, #3
-    str r5, r6, #2
-    str r2, r6, #1
-    str r1, r6, #0
+    ldr r7, r6, #3
+    ldr r5, r6, #2
+    ldr r2, r6, #1
+    ldr r1, r6, #0
     add r6, r6, #4
 
     ret
 _jsrr_q_enque .fill   x2201
 
+; threadDeque
+; Inputs: none
+; Outputs: r0=threadptr, 0 if none
 threadDeque
+    add r6, r6, #-4
+    str r7, r6, #3
+    str r5, r6, #2
+    str r2, r6, #1
+    str r1, r6, #0
+    add r5, r6, #0  ; setup FP
+    add r6, r6, #-1 ; allocate for dequeue space
+
+    ; body
+    lea r0, _thread_queue   ; get our queue
+    add r1, r5, #-1         ; setup our ptr
+    ldi r2, _jsrr_q_deque
+    jsrr r2
+    add r0, r0, #0
+    brz _threadDeque_return ; if it returned 0, return a 0
+    ldr r0, r1, #0          ; load the threadptr from it's storage
+
+_threadDeque_return
+    add r6, r5, #0  ; deallocate using FP
+    ldr r7, r6, #3
+    ldr r5, r6, #2
+    ldr r2, r6, #1
+    ldr r1, r6, #0
+    add r6, r6, #4
     ret
-_jsrr_q_deque .fill   x2002
+_jsrr_q_deque .fill   x2202
 
-
-_active_thread_ptr  .blkw 1
+_thread_TERM    .fill 0
+_thread_READY   .fill 1
+_thread_RUNNING .fill 2
+_thread_BLOCKED .fill 3
+_p_active_thread    .blkw 1
 
 _thread_size    .fill x0250
 _max_thread     .fill 4
