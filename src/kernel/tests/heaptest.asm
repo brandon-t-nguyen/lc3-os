@@ -17,6 +17,9 @@ heaptest
     add r0, r0, #4
     jsrr r4
 
+    ldr r4, r5, #2      ; free
+    jsrr r4
+
 
     brnzp -1
 

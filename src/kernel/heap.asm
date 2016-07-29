@@ -81,9 +81,41 @@ _m_restore
 _m_return
     ret
 
+; Inputs: R0=pointer to deallocate
+; Output: none
 free
+    add r0, r0, #0
+    brz _f_return   ; if null, return
+
+    add r6, r6, #-3
+    str r7, r6, #2
+    str r2, r6, #1
+    str r1, r6, #0
+
     jsr heapLock
+
+    ; TODO: validate the pointer
+    jsr validateBlock
+    add r0, r0, #0
+    brz _f_restore  ; if not valid, return
+
+    ldr r1, r0 #-1  ; get the header
+    brzp _f_restore ; if it's already free, return
+    not r2, r1
+    add r2, r2, #1  ; negate the size: it's positive now
+    str r2, r0, #-1 ; store the header
+    add r2, r1, r0  ; point to the end
+    str r1, r2, #0  ; store the footer
+
+    jsr addFreeBlock
+
+_f_restore
     jsr heapUnlock
+    ldr r7, r6, #2
+    ldr r2, r6, #1
+    ldr r1, r6, #0
+    add r6, r6, #3
+_f_return
 	ret
 
 ; findBestBlock
@@ -266,6 +298,58 @@ _rb_return
     ldr r2, r6, #1
     ldr r1, r6, #0
     add r6, r6, #2
+    ret
+
+; Validates the sanity of a block
+; inputs: r0: pointer to block
+; output: 0 if insane, 1 if valid
+validateBlock
+    add r6, r6, #-4
+    str r3, r6, #3
+    str r2, r6, #2
+    str r1, r6, #1
+    str r0, r6, #0
+
+    ; check ptr >= start ==> ptr - start >= 0
+    ld  r1, _heap_start
+    not r1, r1
+    add r1, r1, #1
+    add r1, r0, r1  ; ptr - start
+    brn _vb_fail    ; ptr - start < 0 is fail
+
+    ; check ptr < end ==> ptr - end < 0
+    ld  r1, _heap_end
+    not r1, r1
+    add r1, r1, #1
+    add r1, r0, r1  ; ptr - end
+    brzp _vb_fail   ; ptr - start >= 0 is fail
+
+    ; check that the header == footer
+    ldr r1, r0, #-1 ; load the footer
+    brzp #2         ; skip if negation positive or zero
+    not r1, r1
+    add r1, r1, #1
+    add r2, r0, r1  ; get to the footer
+    ldr r3, r2, #0  ; load the footer
+    brnz #2         ; we need negative footer: negate if positive
+    not r3, r3
+    add r3, r3, #1
+    add r3, r1, r3  ; compare the header and foter
+    brz _vb_pass
+
+_vb_fail
+    and r0, r0, #0
+    brnzp _vb_return
+_vb_pass
+    and r0, r0, #0
+    add r0, r0, #1
+
+_vb_return
+    ldr r3, r6, #3
+    ldr r2, r6, #2
+    ldr r1, r6, #1
+    ; ldr r0, r6, #0 ; return in 0
+    add r6, r6, #4
     ret
 
 heapLock
