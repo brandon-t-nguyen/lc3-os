@@ -63,10 +63,21 @@ q_enqueue
     ; update the pointer and status
     add r2, r0, #0  ; move the queue pointer to save
     ldr r0, r2, #2  ; get the enqueue index
-    add r0, r0, #1  ; increment it
+    
+    ; update enqI
     ldr r1, r2, #1  ; get the max # of elements
-    ldi r3, _jsrr_ind_div   ; get div pointer
-    jsrr r3
+    not r1, r1
+    add r1, r1, #1
+    add r1, r0, r1  ; enqueueindex - max
+    brzp _q_enqueue_wrap
+_q_enqueue_nowrap    
+    add r1, r0, #1  ; increment it
+    brnzp _q_enqueue_endwrap
+_q_enqueue_wrap
+    and r1, r0, #0
+_q_enqueue_endwrap
+    ;
+
     and r3, r3, #0  ; working reg for new flag
     str r1, r2, #2  ; save the enqI
     ldr r0, r2, #3  ; get the deqI
@@ -77,6 +88,8 @@ q_enqueue
     add r3, r3, #1  ; make it 1 to say it's full
 _q_enqueue_store_flag
     str r3, r2, #4  ; store status
+    add r3, r3, #0
+    brp _q_enqueue_full
     and r0, r0, #0  ;
     add r0, r0, #1  ;
     brnzp _q_enqueue_return;
@@ -116,10 +129,21 @@ q_dequeue
     ; update the pointer and status
     add r2, r0, #0  ; move the queue pointer to save
     ldr r0, r2, #3  ; get the dequeue index
-    add r0, r0, #1  ; increment it
+    
+    ; update deqI
     ldr r1, r2, #1  ; get the max # of elements
-    ldi r3, _jsrr_ind_div   ; get div pointer
-    jsrr r3
+    not r1, r1
+    add r1, r1, #1
+    add r1, r0, r1  ; enqueueindex - max
+    brzp _q_dequeue_wrap
+ _q_dequeue_nowrap    
+    add r1, r0, #1  ; increment it   
+    brzp _q_dequeue_endwrap
+_q_dequeue_wrap
+    and r1, r0, #0
+_q_dequeue_endwrap
+    ;
+
     and r3, r3, #0  ; working reg for new flag
     str r1, r2, #3  ; save the deqI
     ldr r0, r2, #2  ; get the enqI
@@ -130,6 +154,8 @@ q_dequeue
     add r3, r3, #-1 ; make it -1 to say it's empty
 _q_dequeue_store_flag
     str r3, r2, #4  ; store status
+    add r3, r3, #0
+    brn _q_dequeue_empty
     and r0, r0, #0  ;
     add r0, r0, #1  ;
     brnzp _q_dequeue_return;
@@ -144,7 +170,5 @@ _q_dequeue_return
     ;ldr r0, r6, #0 return value
     add r6, r6, #5
     ret
-
-_jsrr_ind_div   .fill   x2008
 
 .end
